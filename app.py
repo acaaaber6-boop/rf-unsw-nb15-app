@@ -10,6 +10,7 @@ PERUBAHAN DARI TEMPLATE:
 3. Checkbox filter "hanya tampilkan flow SERANGAN" pada tabel hasil.
 4. Grafik baru proporsi Normal vs Serangan.
 5. Tabel 10 flow dengan probabilitas serangan tertinggi.
+6. Tab baru "Simulasi sensitivitas": precision/recall/F1 per threshold, threshold terbaik, confusion matrix.
 """
 import json
 from pathlib import Path
@@ -19,8 +20,8 @@ import pandas as pd
 import streamlit as st
 
 # ====== GANTI DENGAN DATA KAMU ======
-NAMA = "Berlani reshalia "
-NIM = "2410017514002"
+NAMA = "Berlani Reshalia"
+NIM = "2410017514009"
 # ====================================
 
 BASE = Path(__file__).parent
@@ -92,7 +93,9 @@ st.caption(f"Dibuat oleh: {NAMA} - {NIM} | D4 TRKJ Universitas Bung Hatta")
 st.write("Model **Random Forest** yang dilatih pada dataset **UNSW-NB15** memprediksi apakah sebuah "
          "flow jaringan normal atau serangan, sekaligus menebak kategori serangannya.")
 
-tab_csv, tab_manual, tab_info = st.tabs(["📄 Prediksi dari CSV", "✍️ Input manual", "ℹ️ Tentang model"])
+# [PERUBAHAN] tab baru "Simulasi sensitivitas"
+tab_csv, tab_manual, tab_sim, tab_info = st.tabs(
+    ["📄 Prediksi dari CSV", "✍️ Input manual", "🎚️ Simulasi sensitivitas", "ℹ️ Tentang model"])
 
 # --- Tab 1: CSV ---
 with tab_csv:
@@ -183,7 +186,58 @@ with tab_manual:
         else:
             st.success(f"**Normal** (probabilitas serangan {r['prob_serangan']:.1%})")
 
-# --- Tab 3: Info model ---
+# --- Tab baru: Simulasi sensitivitas (pengaruh threshold terhadap performa) ---
+with tab_sim:
+    st.write("Tab ini menunjukkan bagaimana **threshold** mengubah kualitas deteksi. "
+             "Model diuji pada 300 flow contoh yang punya label asli, lalu dihitung precision, recall, "
+             "dan F1 untuk setiap threshold.")
+    data_sim = pd.read_csv(SAMPLE_CSV)
+    if "label" not in data_sim.columns:
+        st.info("Data contoh tidak memiliki kolom `label`, jadi simulasi tidak dapat dihitung.")
+    else:
+        prob_sim = predict(data_sim, 0.5)["prob_serangan"]
+        y_true = data_sim["label"].astype(int)
+
+        def hitung_metrik(t: float) -> dict:
+            pred = (prob_sim >= t).astype(int)
+            tp = int(((pred == 1) & (y_true == 1)).sum())
+            fp = int(((pred == 1) & (y_true == 0)).sum())
+            fn = int(((pred == 0) & (y_true == 1)).sum())
+            tn = int(((pred == 0) & (y_true == 0)).sum())
+            prec = tp / (tp + fp) if (tp + fp) else 0.0
+            rec = tp / (tp + fn) if (tp + fn) else 0.0
+            f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
+            return {"threshold": round(t, 2), "akurasi": (tp + tn) / len(y_true),
+                    "precision": prec, "recall": rec, "f1": f1,
+                    "TP": tp, "FP": fp, "FN": fn, "TN": tn}
+
+        tabel = pd.DataFrame([hitung_metrik(i * 0.05) for i in range(1, 20)])
+        terbaik = tabel.loc[tabel["f1"].idxmax()]
+        st.success(f"Threshold dengan F1 tertinggi pada data contoh: **{terbaik['threshold']:.2f}** "
+                   f"(F1 = {terbaik['f1']:.1%}, recall = {terbaik['recall']:.1%}, "
+                   f"precision = {terbaik['precision']:.1%})")
+
+        st.subheader("Precision, recall, dan F1 menurut threshold")
+        st.line_chart(tabel.set_index("threshold")[["precision", "recall", "f1"]])
+
+        st.subheader("Detail pada threshold tertentu")
+        t_pilih = st.slider("Pilih threshold", 0.05, 0.95, float(threshold), 0.05, key="slider_sim")
+        m = hitung_metrik(t_pilih)
+        a, b, c, d = st.columns(4)
+        a.metric("Akurasi", f"{m['akurasi']:.1%}")
+        b.metric("Precision", f"{m['precision']:.1%}")
+        c.metric("Recall", f"{m['recall']:.1%}")
+        d.metric("F1", f"{m['f1']:.1%}")
+        st.write("**Confusion matrix**")
+        st.table(pd.DataFrame(
+            {"Prediksi normal": [m["TN"], m["FN"]], "Prediksi serangan": [m["FP"], m["TP"]]},
+            index=["Aktual normal", "Aktual serangan"]))
+        st.caption("FN (serangan lolos) menurun saat threshold diturunkan, tetapi FP (alarm palsu) bertambah.")
+
+        with st.expander("Lihat tabel lengkap semua threshold"):
+            st.dataframe(tabel.round(3), width="stretch")
+
+# --- Tab 4: Info model ---
 with tab_info:
     st.subheader("Fitur terpenting (model biner)")
     imp = pd.Series(meta["importance_top15"]).rename_axis("fitur").reset_index(name="importance")
