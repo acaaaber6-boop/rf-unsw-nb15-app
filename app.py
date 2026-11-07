@@ -21,7 +21,7 @@ import streamlit as st
 
 # ====== GANTI DENGAN DATA KAMU ======
 NAMA = "Berlani Reshalia"
-NIM = "2410017514009"
+NIM = "2410017514002"
 # ====================================
 
 BASE = Path(__file__).parent
