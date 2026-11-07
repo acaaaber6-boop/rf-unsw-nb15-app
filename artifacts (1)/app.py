@@ -3,6 +3,13 @@ Aplikasi Streamlit: Klasifikasi Anomali dan Serangan Jaringan (UNSW-NB15) dengan
 Proyek 01, Machine Learning for Network Data, D4 TRKJ Universitas Bung Hatta
 
 Jalankan lokal:  streamlit run app.py
+
+PERUBAHAN DARI TEMPLATE:
+1. Identitas mahasiswa di judul dan footer (GANTI NAMA & NIM di bawah).
+2. Metrik tambahan di sidebar (precision dan F1 serangan, jika ada di metadata).
+3. Checkbox filter "hanya tampilkan flow SERANGAN" pada tabel hasil.
+4. Grafik baru proporsi Normal vs Serangan.
+5. Tabel 10 flow dengan probabilitas serangan tertinggi.
 """
 import json
 from pathlib import Path
@@ -10,6 +17,11 @@ from pathlib import Path
 import joblib
 import pandas as pd
 import streamlit as st
+
+# ====== GANTI DENGAN DATA KAMU ======
+NAMA = "Berlani reshalia "
+NIM = "2410017514002"
+# ====================================
 
 BASE = Path(__file__).parent
 MODEL_DIR = BASE / "model"
@@ -64,10 +76,19 @@ with st.sidebar:
     c2.metric("ROC-AUC", f"{mb['roc_auc']:.3f}")
     c1.metric("Recall serangan", f"{mb['recall']:.1%}")
     c2.metric("Akurasi kategori", f"{mc['accuracy']:.1%}")
+    # [PERUBAHAN] metrik tambahan: precision dan F1 (hanya tampil jika ada di metadata)
+    if "precision" in mb:
+        c1.metric("Precision serangan", f"{mb['precision']:.1%}")
+    if "f1" in mb:
+        c2.metric("F1 serangan", f"{mb['f1']:.1%}")
     st.caption(f"Dataset: {meta['dataset']}")
+    st.divider()
+    st.caption(f"👤 {NAMA} ({NIM})")
 
 # ---------- Halaman utama ----------
 st.title("🛡️ Deteksi Anomali dan Serangan Jaringan")
+# [PERUBAHAN] identitas mahasiswa
+st.caption(f"Dibuat oleh: {NAMA} - {NIM} | D4 TRKJ Universitas Bung Hatta")
 st.write("Model **Random Forest** yang dilatih pada dataset **UNSW-NB15** memprediksi apakah sebuah "
          "flow jaringan normal atau serangan, sekaligus menebak kategori serangannya.")
 
@@ -114,7 +135,22 @@ with tab_csv:
             st.bar_chart(pd.cut(res["prob_serangan"], bins=[0, .1, .3, .5, .7, .9, 1.0], include_lowest=True)
                          .astype(str).value_counts().sort_index())
 
+        # [PERUBAHAN] grafik proporsi normal vs serangan
+        st.subheader("Proporsi Normal vs Serangan")
+        prop = res["prediksi"].value_counts().rename_axis("prediksi").reset_index(name="jumlah")
+        st.bar_chart(prop, x="prediksi", y="jumlah")
+
+        # [PERUBAHAN] 10 flow dengan probabilitas serangan tertinggi
+        st.subheader("10 flow paling mencurigakan")
+        top10 = shown.sort_values("prob_serangan", ascending=False).head(10)
+        st.dataframe(top10, width="stretch")
+
         st.subheader("Hasil per flow")
+        # [PERUBAHAN] filter hanya flow yang diprediksi SERANGAN
+        hanya_serangan = st.checkbox("Tampilkan hanya flow yang diprediksi SERANGAN")
+        if hanya_serangan:
+            shown = shown[shown["prediksi"] == "SERANGAN"]
+        st.caption(f"Menampilkan {len(shown)} flow")
         st.dataframe(shown, width="stretch", height=360)
         st.download_button("⬇️ Unduh hasil (CSV)", shown.to_csv(index=False).encode(),
                            "hasil_prediksi.csv", "text/csv")
@@ -161,3 +197,7 @@ with tab_info:
     }))
     st.caption(f"Dilatih dengan Python {meta['versions']['python']}, "
                f"scikit-learn {meta['versions']['scikit-learn']}, numpy {meta['versions']['numpy']}.")
+
+# [PERUBAHAN] footer
+st.divider()
+st.caption(f"© 2026 {NAMA} ({NIM}) - Proyek 01 Machine Learning for Network Data, D4 TRKJ Universitas Bung Hatta")
